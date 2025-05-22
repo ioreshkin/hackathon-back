@@ -6,6 +6,7 @@ class Apartment(Base):
     __tablename__ = 'apartment'
 
     id = Column(Integer, primary_key=True)
+    number = Column(Integer)
     link = Column(String, nullable=False)
 
     home_apartments = relationship(
