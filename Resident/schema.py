@@ -1,18 +1,12 @@
-from sqlalchemy import Column, Integer, String
-from database import Base
-from sqlalchemy.orm import relationship
+from pydantic import BaseModel
+from typing import Optional
 
-class Resident(Base):
-    __tablename__ = 'resident'
+class ResidentBase(BaseModel):
+    id: int
+    name: Optional[str] = None
 
-    id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
+    class Config:
+        from_attributes = True
 
-    apartments = relationship(
-        'Resident_Apartment',
-        back_populates='resident')
-
-    zhks = relationship(
-        'Resident_ZHK',
-        back_populates='resident'
-    )
+class ResidentCreate(ResidentBase):
+    id: int
