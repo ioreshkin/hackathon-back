@@ -10,13 +10,16 @@ router = APIRouter(
     tags=["test"]
 )
 
+@app.get("/")
+async def root():
+    return {"message": "It works!"}
+
 @router.get("/lol")
 async def Hello():
-    print("Hello!")
+    return await get_events()
 
-@router.get("/users")
 async def get_events():
-    response = await client.get("/api/users/")
+    response = await client.get()
     response.raise_for_status()
     return response.json()
 
