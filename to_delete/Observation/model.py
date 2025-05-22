@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, ForeignKey, DateTime, Float
-from database import Base
+from to_delete.database import Base
 from sqlalchemy.orm import relationship
 from datetime import datetime
 

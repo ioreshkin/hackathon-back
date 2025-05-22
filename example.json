@@ -1,0 +1,42 @@
+{
+    "command": "huk->get-device-signals",
+    "error": 0,
+    "message": "",
+    "data": {
+        "apartment": {
+            "apartment_id": "2112",
+            "apartment_title": "Москва, ул. Капитана Хакатонова, 15, кв. 0"
+        },
+        "signals": {
+            "17036925610005156": [
+                {
+                    "intensity": 1.2147087120073,
+                    "name": "term",
+                    "signal_label": "Температура воздуха"
+                },
+                {
+                    "intensity": 0,
+                    "name": "lux",
+                    "signal_label": "Освещённость"
+                },
+                {
+                    "intensity": 4.7537240731186,
+                    "name": "hum",
+                    "signal_label": "Влажность воздуха"
+                },
+                {
+                    "intensity": 0,
+                    "name": "air-iaq",
+                    "signal_label": "Индекс качества воздуха"
+                }
+            ]
+        }
+    },
+    "connection": {
+        "server_real_ip": "",
+        "user_ip": "54.86.50.139"
+    },
+    "token": "con-11229-3c94365870809b2177a953a0b7f714d7",
+    "fromdomain": "",
+    "worktime": "0.535sec"
+}
