@@ -1,6 +1,7 @@
 from fastapi import FastAPI, APIRouter
 import httpx
 import asyncio
+import time
 from config import settings
 from data_module import data
 
@@ -41,13 +42,12 @@ NORMAL_RANGES = {
     'air-iaq': 2
 }
 
-# Глобальные структуры
 report = []
 chart_data = [[[] for _ in range(5)] for _ in SIGNAL_TYPES]
 event_firsts = [{} for _ in range(5)]
 new_events_buffer = []
 last_alerts = [{} for _ in range(5)]
-current_time_step = -1  # последний завершённый time_idx
+current_time_step = -1
 
 def classify(value: float, normal: float) -> int:
     if value <= normal:
@@ -127,7 +127,7 @@ async def check_and_log(flat_idx: int, time_idx: int):
                     "flat": flat_idx + 1,
                     "parameter": name,
                     "level": "critical" if level == 3 else "warning",
-                    "time": time_idx * 30
+                    "timestamp": int(time.time())
                 })
                 last_alerts[flat_idx][name] = {
                     "level": level,
@@ -207,7 +207,6 @@ async def get_human_readable_report():
 
 @router.get("/status")
 async def get_current_status():
-    # Берём только записи с текущего шага
     relevant = [entry for entry in report if entry["time"] == current_time_step and entry["level"] >= 2]
 
     unique = {}
@@ -217,7 +216,8 @@ async def get_current_status():
             unique[key] = {
                 "flat": entry["flat"] + 1,
                 "parameter": entry["signal"],
-                "level": "critical" if entry["level"] == 3 else "warning"
+                "level": "critical" if entry["level"] == 3 else "warning",
+                "timestamp": int(time.time())
             }
 
     return list(unique.values())
