@@ -247,4 +247,4 @@ async def update_notify_settings(settings: dict):
     NOTIFY_SETTINGS.update(settings)
     return {"message": "Настройки обновлены", "new_settings": NOTIFY_SETTINGS}
 
-app.include_router(router)
+app.include_router(router, prefix="/api")
