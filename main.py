@@ -9,6 +9,7 @@ app = FastAPI()
 router = APIRouter(prefix="/devices", tags=["devices"])
 
 SIGNAL_TYPES = ['hum', 'term', 'co2', 'lux', 'air-iaq']
+NOTIFY_SETTINGS = {'hum':True, 'term':True, 'co2':True, 'lux':True, 'air-iaq':True}
 
 EG = ['a6353755-751e-463c-9832-fc8611d70e32',
       '7c207da1-633c-409b-8269-a24d9134f57e',
@@ -183,7 +184,12 @@ async def get_anomalies():
     global new_events_buffer
     response = new_events_buffer.copy()
     new_events_buffer.clear()
-    return response
+    filtered_response = [
+        event for event in response
+        if event['level'] == 'critical' or 
+            (event['parameter'] in NOTIFY_SETTINGS and NOTIFY_SETTINGS[event['parameter']])
+    ]
+    return filtered_response
 
 @router.get("/report")
 async def get_human_readable_report():
