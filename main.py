@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException
 import httpx
 import asyncio
 import time
@@ -227,5 +227,24 @@ async def get_current_status():
             }
 
     return list(unique.values())
+
+@router.patch("/notify-settings")
+async def update_notify_settings(settings: dict):
+    # Проверяем, что все ключи существуют в оригинальных настройках
+    for key in settings:
+        if key not in NOTIFY_SETTINGS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Недопустимый параметр: {key}. Разрешенные: {list(NOTIFY_SETTINGS.keys())}"
+            )
+        if not isinstance(settings[key], bool):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Некорректное значение для {key}. Требуется boolean (True/False)"
+            )
+
+    # Обновляем только существующие настройки
+    NOTIFY_SETTINGS.update(settings)
+    return {"message": "Настройки обновлены", "new_settings": NOTIFY_SETTINGS}
 
 app.include_router(router)
