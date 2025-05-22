@@ -2,19 +2,20 @@ from sqlalchemy import Column, Integer, String
 from database import Base
 from sqlalchemy.orm import relationship
 
-class ZHK(Base):
-    __tablename__ = 'zhk'
+class Home(Base):
+    __tablename__ = 'home'
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
+    street = Column(String, nullable=True)
 
     zhk_homes = relationship(
         'ZHK_Home',
-        back_populates='zhk'
+        back_populates='home'
+
     )
 
-    residents = relationship(
-        'Resident_ZHK',
-        back_populates='zhk'
+    home_apartments = relationship(
+        'Home_Apartment',
+        back_populates='home'
     )
 
