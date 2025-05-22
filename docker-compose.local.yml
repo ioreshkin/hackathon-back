@@ -6,6 +6,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - APP_CONTENT_DIR=.
     environment:
       - POSTGRES_HOST=${DB_HOST}
       - POSTGRES_DB=${DB_NAME}
@@ -15,7 +17,7 @@ services:
     depends_on:
       - postgres
     ports:
-      - "8080:80"
+      - "8080:8000"
 
   postgres:
     image: postgres:15
