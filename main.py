@@ -2,6 +2,7 @@ from fastapi import FastAPI, APIRouter, HTTPException
 import httpx
 import asyncio
 import time
+from datetime import datetime, timedelta
 from config import settings
 from data_module import data
 
@@ -9,19 +10,31 @@ app = FastAPI()
 router = APIRouter(prefix="/devices", tags=["devices"])
 
 SIGNAL_TYPES = ['hum', 'term', 'co2', 'lux', 'air-iaq']
-NOTIFY_SETTINGS = {'hum':True, 'term':True, 'co2':True, 'lux':True, 'air-iaq':True}
+NOTIFY_SETTINGS = {'hum': True, 'term': True, 'co2': True, 'lux': True, 'air-iaq': True}
 
-EG = ['a6353755-751e-463c-9832-fc8611d70e32',
-      '7c207da1-633c-409b-8269-a24d9134f57e',
-      'e0c5a923-fbe2-48a2-90cd-b33dec7bd257',
-      '8853034c-5afc-4a9c-9481-e6012f3bd97b',
-      'ac267939-9376-43b9-b374-6c1eec93af97']
+HUMAN_PARAMETER_NAMES = {
+    'term': 'температуры',
+    'co2': 'CO₂',
+    'hum': 'влажности',
+    'lux': 'освещённости',
+    'air-iaq': 'качества воздуха'
+}
 
-SERIAL = ['17036925610005156',
-          '17048841600013400',
-          '17048877610019909',
-          '17038509610000005',
-          '17038365640000008']
+EG = [
+    'a6353755-751e-463c-9832-fc8611d70e32',
+    '7c207da1-633c-409b-8269-a24d9134f57e',
+    'e0c5a923-fbe2-48a2-90cd-b33dec7bd257',
+    '8853034c-5afc-4a9c-9481-e6012f3bd97b',
+    'ac267939-9376-43b9-b374-6c1eec93af97'
+]
+
+SERIAL = [
+    '17036925610005156',
+    '17048841600013400',
+    '17048877610019909',
+    '17038509610000005',
+    '17038365640000008'
+]
 
 APARTMENT_ID = [2112, 2113, 2114, 2116, 2117]
 
@@ -46,9 +59,12 @@ NORMAL_RANGES = {
 report = []
 chart_data = [[[] for _ in range(5)] for _ in SIGNAL_TYPES]
 event_firsts = [{} for _ in range(5)]
+event_ends = [{} for _ in range(5)]
 new_events_buffer = []
 last_alerts = [{} for _ in range(5)]
 current_time_step = -1
+alert_log = []
+alert_id_counter = 1
 
 def classify(value: float, normal: float) -> int:
     if value <= normal:
@@ -84,6 +100,7 @@ async def check_and_log(flat_idx: int, time_idx: int):
         return
 
     device_signals = payload.get("data", {}).get("signals", {})
+    global alert_id_counter
 
     for serial, signals in device_signals.items():
         for signal in signals:
@@ -110,9 +127,15 @@ async def check_and_log(flat_idx: int, time_idx: int):
 
             if name not in event_firsts[flat_idx]:
                 event_firsts[flat_idx][name] = {}
+
             if level in (2, 3) and level not in event_firsts[flat_idx][name]:
                 event_firsts[flat_idx][name][level] = time_idx
 
+            # фиксируем окончание
+            if level == 1 and name in event_firsts[flat_idx] and name not in event_ends[flat_idx]:
+                event_ends[flat_idx][name] = time_idx
+
+            # буфер уведомлений
             alert_info = last_alerts[flat_idx].get(name, {})
             last_level = alert_info.get("level", 0)
             last_step = alert_info.get("last_alert_step", -999)
@@ -154,14 +177,9 @@ async def simulate_day():
         await asyncio.gather(*send_tasks)
         await asyncio.sleep(0.2)
 
-        check_tasks = [
-            check_and_log(flat_idx, time_idx)
-            for flat_idx in range(5)
-        ]
+        check_tasks = [check_and_log(flat_idx, time_idx) for flat_idx in range(5)]
         await asyncio.gather(*check_tasks)
-
         current_time_step = time_idx
-
     print("\n📝 Симуляция завершена. Записей в отчёте:", len(report))
 
 @router.post("/simulate")
@@ -187,34 +205,64 @@ async def get_anomalies():
     filtered_response = [
         event for event in response
         if event['level'] == 'critical' or 
-            (event['parameter'] in NOTIFY_SETTINGS and NOTIFY_SETTINGS[event['parameter']])
+           (event['parameter'] in NOTIFY_SETTINGS and NOTIFY_SETTINGS[event['parameter']])
     ]
     return filtered_response
 
 @router.get("/report")
-async def get_human_readable_report():
-    output = []
-    for flat_idx, events in enumerate(event_firsts):
-        flat_title = f"🏠 Квартира №{flat_idx + 1}:"
-        lines = [flat_title]
+async def get_structured_report():
+    report_output = []
+    now = datetime.now()
+    base_day = datetime.combine(now.date(), datetime.min.time())
 
-        for param, times in events.items():
-            if 2 in times:
-                lines.append(f"Аномалия параметра '{param}' началась в {round(times[2] * 0.5, 1)} ч.")
-            if 3 in times:
-                lines.append(f"Критическое превышение параметра '{param}' зафиксировано в {round(times[3] * 0.5, 1)} ч.")
-        
-        if len(lines) == 1:
-            lines.append("✅ Без отклонений за сутки.")
+    for flat_idx in range(5):
+        for param, times in event_firsts[flat_idx].items():
+            for level in [2, 3]:
+                if level not in times:
+                    continue
 
-        output.append("\n".join(lines))
-    
-    return {"summary": output}
+                time_idx = times[level]
+                start_dt = base_day + timedelta(minutes=30 * time_idx)
+                start_str = start_dt.strftime("%H:%M")
+
+                end_time_idx = event_ends[flat_idx].get(param)
+                if end_time_idx:
+                    end_dt = base_day + timedelta(minutes=30 * end_time_idx)
+                    end_str = end_dt.strftime("%H:%M")
+                    duration_td = end_dt - start_dt
+                else:
+                    end_dt = None
+                    end_str = None
+                    duration_td = now - start_dt
+
+                hours = duration_td.seconds // 3600
+                minutes = (duration_td.seconds % 3600) // 60
+                duration = f"{hours} ч. {minutes} мин."
+
+                level_text = "Критическое" if level == 3 else "Аномальное"
+                param_name = HUMAN_PARAMETER_NAMES.get(param, param)
+                title = f"{level_text} превышение {param_name} в квартире №{flat_idx + 1}"
+                summary = (
+                    f"Превышение {param_name} в квартире №{flat_idx + 1} началось в {start_str} "
+                    + (f"и закончилось в {end_str}." if end_str else f"и продолжается уже {duration}.")
+                )
+
+                report_output.append({
+                    "flat": flat_idx + 1,
+                    "parameter": param_name,
+                    "level": "critical" if level == 3 else "warning",
+                    "start_time": start_str,
+                    "end_time": end_str,
+                    "duration": duration,
+                    "title": title,
+                    "summary": summary
+                })
+
+    return {"date": now.date().isoformat(), "events": report_output}
 
 @router.get("/status")
 async def get_current_status():
     relevant = [entry for entry in report if entry["time"] == current_time_step and entry["level"] >= 2]
-
     unique = {}
     for entry in reversed(relevant):
         key = (entry["flat"], entry["signal"])
@@ -225,25 +273,15 @@ async def get_current_status():
                 "level": "critical" if entry["level"] == 3 else "warning",
                 "timestamp": int(time.time())
             }
-
     return list(unique.values())
 
 @router.patch("/notify-settings")
 async def update_notify_settings(settings: dict):
-    # Проверяем, что все ключи существуют в оригинальных настройках
     for key in settings:
         if key not in NOTIFY_SETTINGS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Недопустимый параметр: {key}. Разрешенные: {list(NOTIFY_SETTINGS.keys())}"
-            )
+            raise HTTPException(status_code=400, detail=f"Недопустимый параметр: {key}.")
         if not isinstance(settings[key], bool):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Некорректное значение для {key}. Требуется boolean (True/False)"
-            )
-
-    # Обновляем только существующие настройки
+            raise HTTPException(status_code=400, detail=f"Значение {key} должно быть True/False")
     NOTIFY_SETTINGS.update(settings)
     return {"message": "Настройки обновлены", "new_settings": NOTIFY_SETTINGS}
 
