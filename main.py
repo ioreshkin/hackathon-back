@@ -44,7 +44,7 @@ client = httpx.AsyncClient(
         "Authorization": f"Bearer {settings.API_TOKEN}",
         "Content-Type": "application/json"
     },
-    timeout=10,
+    timeout=20,
     follow_redirects=True
 )
 
@@ -131,28 +131,19 @@ async def check_and_log(flat_idx: int, time_idx: int):
             if level in (2, 3) and level not in event_firsts[flat_idx][name]:
                 event_firsts[flat_idx][name][level] = time_idx
 
-            # фиксируем окончание
             if level == 1 and name in event_firsts[flat_idx] and name not in event_ends[flat_idx]:
                 event_ends[flat_idx][name] = time_idx
 
-            # буфер уведомлений
-            alert_info = last_alerts[flat_idx].get(name, {})
-            last_level = alert_info.get("level", 0)
-            last_step = alert_info.get("last_alert_step", -999)
-
-            should_alert = False
-            if level > last_level:
-                should_alert = True
-            elif level == last_level and level >= 2 and time_idx - last_step >= 2:
-                should_alert = True
-
-            if should_alert and level >= 2:
-                new_events_buffer.append({
-                    "flat": flat_idx + 1,
-                    "parameter": name,
-                    "level": "critical" if level == 3 else "warning",
-                    "timestamp": int(time.time())
-                })
+            prev = last_alerts[flat_idx].get(name)
+            prev = last_alerts[flat_idx].get(name)
+            if prev is None or prev["level"] != level:
+                if level >= 2:
+                    new_events_buffer.append({
+                        "flat": flat_idx + 1,
+                        "parameter": name,
+                        "level": "critical" if level == 3 else "warning",
+                        "timestamp": int(time.time())
+                    })
                 last_alerts[flat_idx][name] = {
                     "level": level,
                     "last_alert_step": time_idx
@@ -189,12 +180,18 @@ async def run_simulation():
 
 @router.get("/report_data")
 async def get_report_data():
-    result = {}
+    result = []
     for param_idx, param_name in enumerate(SIGNAL_TYPES):
-        result[param_name] = {
-            f"flat_{flat_idx + 1}": chart_data[param_idx][flat_idx]
-            for flat_idx in range(5)
+        entry = {
+            "parameter": param_name,
+            "flats": [
+                {
+                    "id": flat_idx + 1,
+                    "values": chart_data[param_idx][flat_idx]
+                } for flat_idx in range(5)
+            ]
         }
+        result.append(entry)
     return result
 
 @router.get("/anomalies")
@@ -212,8 +209,8 @@ async def get_anomalies():
 @router.get("/report")
 async def get_structured_report():
     report_output = []
-    now = datetime.now()
-    base_day = datetime.combine(now.date(), datetime.min.time())
+    base_day = datetime.combine(datetime.now().date(), datetime.min.time())
+    now = base_day + timedelta(minutes=30 * current_time_step)
 
     for flat_idx in range(5):
         for param, times in event_firsts[flat_idx].items():
