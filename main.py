@@ -65,6 +65,7 @@ last_alerts = [{} for _ in range(5)]
 current_time_step = -1
 alert_log = []
 alert_id_counter = 1
+simulation_complete = False
 
 def classify(value: float, normal: float) -> int:
     if value <= normal:
@@ -176,6 +177,8 @@ async def simulate_day():
 @router.post("/simulate")
 async def run_simulation():
     await simulate_day()
+    global simulation_complete
+    simulation_complete = True
     return {"status": "ok", "message": "Симуляция завершена"}
 
 @router.get("/report_data")
@@ -217,6 +220,9 @@ async def get_anomalies():
 
 @router.get("/report")
 async def get_structured_report():
+    if not simulation_complete:
+        return {"date": datetime.now().date().isoformat(), "events": []}
+
     report_output = []
     base_day = datetime.combine(datetime.now().date(), datetime.min.time())
     now = base_day + timedelta(minutes=30 * current_time_step)
@@ -265,6 +271,41 @@ async def get_structured_report():
                 })
 
     return {"date": now.date().isoformat(), "events": report_output}
+
+@router.get("/report_text")
+async def get_text_summary():
+    get_structured_report()
+    if not simulation_complete:
+        return {"text": "Симуляция ещё не завершена."}
+
+    # Собираем данные из report
+    grouped = {}
+    for entry in report:
+        if entry["level"] < 2:
+            continue
+        flat = entry["flat"] + 1
+        param = entry["signal"]
+        level = "критическое" if entry["level"] == 3 else "аномальное"
+        human_name = HUMAN_PARAMETER_NAMES.get(param, param)
+
+        key = (flat, param, level)
+        if key not in grouped:
+            grouped[key] = entry["time"]
+
+    # Сортируем по времени
+    sorted_events = sorted(grouped.items(), key=lambda x: x[1])
+
+    # Строим текст
+    current_flat = None
+    text = f"🧾 Хронология чрезвычайных ситуаций на {datetime.now().date()}:\n\n"
+    for (flat, param, level), time_idx in sorted_events:
+        human_name = HUMAN_PARAMETER_NAMES.get(param, param)
+        time_str = f"{time_idx // 2:02}:{'30' if time_idx % 2 else '00'}"
+        prefix = "Затем также" if current_flat == flat else "В квартире №" + str(flat)
+        text += f"{prefix} {level} превышение {human_name} с {time_str}.\n"
+        current_flat = flat
+
+    return {"text": text.strip()}
 
 @router.get("/status")
 async def get_current_status():
