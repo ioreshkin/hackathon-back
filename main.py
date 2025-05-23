@@ -199,12 +199,21 @@ async def get_anomalies():
     global new_events_buffer
     response = new_events_buffer.copy()
     new_events_buffer.clear()
-    filtered_response = [
-        event for event in response
-        if event['level'] == 'critical' or 
-           (event['parameter'] in NOTIFY_SETTINGS and NOTIFY_SETTINGS[event['parameter']])
-    ]
-    return filtered_response
+
+    enriched_response = []
+    for event in response:
+        if event['level'] == 'critical' or (
+            event['parameter'] in NOTIFY_SETTINGS and NOTIFY_SETTINGS[event['parameter']]
+        ):
+            human_name = HUMAN_PARAMETER_NAMES.get(event["parameter"], event["parameter"])
+            level_text = "значительно повысилось" if event["level"] == "critical" else "повысилось"
+            text = f"В квартире №{event['flat']} {level_text} значение {human_name}"
+            enriched_response.append({
+                **event,
+                "text": text
+            })
+
+    return enriched_response
 
 @router.get("/report")
 async def get_structured_report():
