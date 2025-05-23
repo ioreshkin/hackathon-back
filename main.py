@@ -262,18 +262,40 @@ async def get_structured_report():
 
 @router.get("/status")
 async def get_current_status():
-    relevant = [entry for entry in report if entry["time"] == current_time_step and entry["level"] >= 2]
-    unique = {}
-    for entry in reversed(relevant):
-        key = (entry["flat"], entry["signal"])
-        if key not in unique:
-            unique[key] = {
-                "flat": entry["flat"] + 1,
-                "parameter": entry["signal"],
-                "level": "critical" if entry["level"] == 3 else "warning",
-                "timestamp": int(time.time())
-            }
-    return list(unique.values())
+    param_map = {
+        'term': 'temp',
+        'co2': 'co2',
+        'hum': 'hum',
+        'lux': 'lux',
+        'air-iaq': 'airIaq'
+    }
+    flat_status = {
+        i + 1: {
+            "id": i + 1,
+            "hum": "normal",
+            "temp": "normal",
+            "co2": "normal",
+            "lux": "normal",
+            "airIaq": "normal"
+        } for i in range(5)
+    }
+
+    for entry in report:
+        if entry["time"] != current_time_step:
+            continue
+        param_key = param_map.get(entry["signal"])
+        if not param_key:
+            continue
+
+        level = "normal"
+        if entry["level"] == 2:
+            level = "warning"
+        elif entry["level"] == 3:
+            level = "critical"
+
+        flat_status[entry["flat"] + 1][param_key] = level
+
+    return list(flat_status.values())
 
 @router.patch("/notify-settings")
 async def update_notify_settings(settings: dict):
